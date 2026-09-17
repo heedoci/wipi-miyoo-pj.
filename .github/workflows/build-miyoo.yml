@@ -62,25 +62,25 @@ jobs:
           docker --version
 
       - name: Host frontend smoke test
-        run: ./test/smoke_test.sh
+        run: bash ./test/smoke_test.sh
 
       - name: Install Miyoo Mini toolchain
-        run: ./scripts/prepare_toolchain.sh
+        run: bash ./scripts/prepare_toolchain.sh
 
       - name: Patch WIPI core for silent MVP
-        run: ./scripts/patch_core.py vendor/WIPI-Emulator
+        run: python3 ./scripts/patch_core.py vendor/WIPI-Emulator
 
       - name: Build Miyoo SDL2 and SwiftShader
-        run: ./scripts/build_sdl2.sh vendor/sdl2
+        run: bash ./scripts/build_sdl2.sh vendor/sdl2
 
       - name: Build WIPI Rust core for ARMv7
-        run: ./scripts/build_core.sh vendor/WIPI-Emulator
+        run: bash ./scripts/build_core.sh vendor/WIPI-Emulator
 
       - name: Build Miyoo SDL2 frontend
         env:
           WIPI_REPO: vendor/WIPI-Emulator
           SDL2_ROOT: vendor/sdl2
-        run: ./scripts/build_frontend.sh
+        run: bash ./scripts/build_frontend.sh
 
       - name: Verify ARM executable
         run: |
@@ -95,7 +95,7 @@ jobs:
       - name: Assemble OnionOS SD payload
         env:
           SDL2_ROOT: vendor/sdl2
-        run: ./scripts/assemble_sd.sh dist
+        run: bash ./scripts/assemble_sd.sh dist
 
       - name: Upload OnionOS package
         uses: actions/upload-artifact@v4
