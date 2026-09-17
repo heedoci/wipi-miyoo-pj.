@@ -17,12 +17,18 @@ SDL_LIB="$SDL2_ROOT/sdl2/build/.libs"
 [ -f "$SDL_LIB/libSDL2-2.0.so.0" ] || { echo "Missing Miyoo SDL2 runtime" >&2; exit 1; }
 [ -n "$CROSS_CC" ] && [ -x "$CROSS_CC" ] || { echo "Missing arm-linux-gnueabihf-gcc" >&2; exit 1; }
 
-mkdir -p build
+mkdir -p build/include
+# The frontend intentionally uses the conventional <SDL2/SDL.h> include form,
+# while steward-fu/sdl2 keeps headers directly in sdl2/include.  Expose that
+# directory under an SDL2 alias so both the real build and host smoke-test use
+# the same source include.
+rm -f build/include/SDL2
+ln -s "$(realpath "$SDL_INC")" build/include/SDL2
 
 "$CROSS_CC" -O3 -DNDEBUG \
   -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
   -ffunction-sections -fdata-sections \
-  -Iinclude -I"$SDL_INC" \
+  -Iinclude -Ibuild/include \
   src/wipi_miyoo.c "$LIB" \
   -L"$SDL_LIB" -Wl,-rpath-link,"$SDL_LIB" -lSDL2 \
   -Wl,--gc-sections \
