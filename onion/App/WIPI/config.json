@@ -1,0 +1,6 @@
+{
+  "label": "WIPI Launcher",
+  "icon": "../../Icons/Default/app/expert.png",
+  "launch": "launch.sh",
+  "description": "Launch the first WIPI/J2ME game found in Roms/WIPI"
+}
