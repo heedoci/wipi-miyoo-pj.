@@ -3,10 +3,11 @@ set -euo pipefail
 
 OUT="${1:-dist}"
 SDL2_ROOT="${SDL2_ROOT:-vendor/sdl2}"
+SDL_STAGE="${SDL_STAGE:-build/miyoo-sdl}"
 
-SDL2_LIB="${SDL2_LIB:-$SDL2_ROOT/sdl2/build/.libs/libSDL2-2.0.so.0}"
-EGL_LIB="${EGL_LIB:-$SDL2_ROOT/swiftshader/build/libEGL.so}"
-GLES2_LIB="${GLES2_LIB:-$SDL2_ROOT/swiftshader/build/libGLESv2.so}"
+SDL2_LIB="${SDL2_LIB:-$SDL_STAGE/libSDL2-2.0.so.0}"
+EGL_LIB="${EGL_LIB:-$SDL_STAGE/libEGL.so}"
+GLES2_LIB="${GLES2_LIB:-$SDL_STAGE/libGLESv2.so}"
 
 find_jsonc() {
   find /opt/prebuilt /opt/mini "$SDL2_ROOT" \
@@ -34,7 +35,7 @@ cp "$GLES2_LIB" "$OUT/Emu/WIPI/lib/libGLESv2.so"
 cp "$JSONC_LIB" "$OUT/Emu/WIPI/lib/libjson-c.so.5"
 
 cat > "$OUT/Roms/WIPI/README.txt" <<'TXT'
-Put only WIPI/J2ME game files you legally own in this folder (.zip or .jar).
+Put WIPI/J2ME .zip or .jar files in this folder.
 Then refresh the OnionOS game list and open WIPI.
 TXT
 
