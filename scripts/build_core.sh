@@ -16,7 +16,13 @@ rustup target add "$TARGET"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER="$CROSS_CC"
 export CC_armv7_unknown_linux_gnueabihf="$CROSS_CC"
 export AR_armv7_unknown_linux_gnueabihf="$CROSS_AR"
-export CFLAGS_armv7_unknown_linux_gnueabihf="-marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
+export CFLAGS_armv7_unknown_linux_gnueabihf="-O3 -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
+
+# Speed-test build: the generic armv7 Rust target does not otherwise tune code
+# generation for the Miyoo Mini Plus Cortex-A7. Keep hard-float ABI from the
+# target/toolchain, and explicitly enable Cortex-A7 + NEON/VFPv4 codegen.
+export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="-C target-cpu=cortex-a7 -C target-feature=+neon,+vfp4 -C codegen-units=1"
+echo "Rust speed flags: $CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS"
 
 # Resolve/download the dependency graph first so we can apply a narrow
 # compatibility patch to zip 8.6.x before compiling. A number of legacy Korean
