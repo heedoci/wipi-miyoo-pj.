@@ -18,12 +18,14 @@ export CC_armv7_unknown_linux_gnueabihf="$CROSS_CC"
 export AR_armv7_unknown_linux_gnueabihf="$CROSS_AR"
 export CFLAGS_armv7_unknown_linux_gnueabihf="-marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
 
+# patch_core.py removes desktop audio dependencies from wipi_core/Cargo.toml,
+# so Cargo.lock must be allowed to refresh in CI. Using --locked here would
+# intentionally fail as soon as that manifest changes.
 cargo build \
   --manifest-path "$ROOT/rust/Cargo.toml" \
   -p wipi_ios \
   --target "$TARGET" \
-  --release \
-  --locked
+  --release
 
 LIB="$ROOT/rust/target/$TARGET/release/libwipi_ios.a"
 [ -f "$LIB" ] || { echo "Core build completed but $LIB is missing" >&2; exit 2; }
