@@ -6,6 +6,7 @@
 #include <string.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "wipi_host.h"
@@ -26,6 +27,12 @@ typedef enum {
 static const char *active_wipi_key[P_COUNT];
 static int keypad_mode = 0;
 static int running = 1;
+
+static double monotonic_seconds(void) {
+    struct timespec ts;
+    if (clock_gettime(CLOCK_MONOTONIC, &ts) != 0) return 0.0;
+    return (double)ts.tv_sec + (double)ts.tv_nsec / 1000000000.0;
+}
 
 static void mkdir_p(const char *path) {
     char tmp[512];
@@ -227,15 +234,8 @@ int main(int argc, char **argv) {
         fprintf(stderr, "SDL_CreateRenderer failed: %s\n", SDL_GetError());
         goto cleanup;
     }
-
-    {
-        SDL_RendererInfo info;
-        if (SDL_GetRendererInfo(renderer, &info) == 0) {
-            fprintf(stderr, "[perf] renderer=%s flags=0x%x vsync=request-disabled\n",
-                    info.name ? info.name : "unknown", (unsigned)info.flags);
-            fflush(stderr);
-        }
-    }
+    fprintf(stderr, "[perf] renderer created; vsync request disabled\n");
+    fflush(stderr);
 
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32,
                                 SDL_TEXTUREACCESS_STREAMING, WIPI_W, WIPI_H);
@@ -249,8 +249,7 @@ int main(int argc, char **argv) {
 
     /* 240x320 -> 360x480, centered on Miyoo's 640x480 panel. */
     const SDL_Rect dst = {140, 0, 360, 480};
-    const uint64_t perf_freq = SDL_GetPerformanceFrequency();
-    uint64_t perf_last = SDL_GetPerformanceCounter();
+    double perf_last = monotonic_seconds();
     unsigned perf_frames = 0;
     unsigned long long perf_total = 0;
 
@@ -273,10 +272,10 @@ int main(int argc, char **argv) {
             SDL_RenderPresent(renderer);
         }
 
-        if (perf_freq != 0) {
-            const uint64_t now = SDL_GetPerformanceCounter();
-            const double elapsed = (double)(now - perf_last) / (double)perf_freq;
-            if (elapsed >= PERF_LOG_SECONDS) {
+        {
+            const double now = monotonic_seconds();
+            const double elapsed = now - perf_last;
+            if (perf_last > 0.0 && elapsed >= PERF_LOG_SECONDS) {
                 const double fps = (double)perf_frames / elapsed;
                 fprintf(stderr, "[perf] WIPI output %.2f fps (%u frames / %.2fs), total=%llu\n",
                         fps, perf_frames, elapsed, perf_total);
