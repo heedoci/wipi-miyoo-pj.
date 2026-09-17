@@ -25,7 +25,6 @@ ln -s "$(realpath "$SDL_INC")" build/include/SDL2
   -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard \
   -ffunction-sections -fdata-sections \
   -Iinclude -Ibuild/include \
-  -include include/miyoo_exit_combo.h \
   src/wipi_miyoo.c "$LIB" \
   -L"$SDL_LIB" -Wl,-rpath-link,"$SDL_LIB" -Wl,--allow-shlib-undefined -lSDL2 \
   -Wl,--gc-sections \
