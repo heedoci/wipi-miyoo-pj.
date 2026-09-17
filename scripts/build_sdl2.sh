@@ -6,6 +6,15 @@ SDL_REPO="${1:-vendor/sdl2}"
 [ -d /opt/mini ] || { echo "/opt/mini missing; run prepare_toolchain.sh first" >&2; exit 2; }
 [ -d /opt/prebuilt ] || { echo "/opt/prebuilt missing; run prepare_toolchain.sh first" >&2; exit 2; }
 
+SDL_SO="$SDL_REPO/sdl2/build/.libs/libSDL2-2.0.so.0"
+EGL_SO="$SDL_REPO/swiftshader/build/libEGL.so"
+GLES_SO="$SDL_REPO/swiftshader/build/libGLESv2.so"
+
+if [ -f "$SDL_SO" ] && [ -f "$EGL_SO" ] && [ -f "$GLES_SO" ]; then
+  echo "Using cached Miyoo SDL2/SwiftShader build."
+  exit 0
+fi
+
 IMAGE="${MIYOO_SDL_DOCKER_IMAGE:-wipi-miyoo-sdl2}"
 docker build --platform linux/amd64 -t "$IMAGE" "$SDL_REPO"
 
@@ -24,9 +33,6 @@ docker run --rm --platform linux/amd64 \
     make sdl2
   '
 
-SDL_SO="$SDL_REPO/sdl2/build/.libs/libSDL2-2.0.so.0"
-EGL_SO="$SDL_REPO/swiftshader/build/libEGL.so"
-GLES_SO="$SDL_REPO/swiftshader/build/libGLESv2.so"
 for f in "$SDL_SO" "$EGL_SO" "$GLES_SO"; do
   [ -f "$f" ] || { echo "Expected SDL runtime missing: $f" >&2; exit 3; }
 done
