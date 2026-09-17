@@ -1,0 +1,109 @@
+name: Build OnionOS WIPI emulator
+
+on:
+  workflow_dispatch:
+    inputs:
+      wipi_ref:
+        description: WIPI-Emulator git ref
+        required: true
+        default: main
+        type: string
+      sdl2_ref:
+        description: steward-fu/sdl2 git ref
+        required: true
+        default: master
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/build-miyoo.yml'
+      - 'src/**'
+      - 'include/**'
+      - 'scripts/**'
+      - 'patch/**'
+      - 'onion/**'
+      - 'test/**'
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      WIPI_REF: ${{ inputs.wipi_ref || 'main' }}
+      SDL2_REF: ${{ inputs.sdl2_ref || 'master' }}
+
+    steps:
+      - name: Checkout wipi-miyoo frontend
+        uses: actions/checkout@v4
+
+      - name: Checkout WIPI-Emulator upstream
+        uses: actions/checkout@v4
+        with:
+          repository: ParkJeongseop/WIPI-Emulator
+          ref: ${{ env.WIPI_REF }}
+          path: vendor/WIPI-Emulator
+
+      - name: Checkout Miyoo SDL2
+        uses: actions/checkout@v4
+        with:
+          repository: steward-fu/sdl2
+          ref: ${{ env.SDL2_REF }}
+          path: vendor/sdl2
+
+      - name: Install host prerequisites
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ca-certificates curl file git make python3 zip
+          rustup show
+          docker --version
+
+      - name: Host frontend smoke test
+        run: ./test/smoke_test.sh
+
+      - name: Install Miyoo Mini toolchain
+        run: ./scripts/prepare_toolchain.sh
+
+      - name: Patch WIPI core for silent MVP
+        run: ./scripts/patch_core.py vendor/WIPI-Emulator
+
+      - name: Build Miyoo SDL2 and SwiftShader
+        run: ./scripts/build_sdl2.sh vendor/sdl2
+
+      - name: Build WIPI Rust core for ARMv7
+        run: ./scripts/build_core.sh vendor/WIPI-Emulator
+
+      - name: Build Miyoo SDL2 frontend
+        env:
+          WIPI_REPO: vendor/WIPI-Emulator
+          SDL2_ROOT: vendor/sdl2
+        run: ./scripts/build_frontend.sh
+
+      - name: Verify ARM executable
+        run: |
+          file build/wipi-miyoo
+          readelf -h build/wipi-miyoo | tee build/elf-header.txt
+          readelf -d build/wipi-miyoo | tee build/elf-dynamic.txt
+          file build/wipi-miyoo | grep -Eq 'ARM|arm' || {
+            echo 'Expected an ARM executable' >&2
+            exit 1
+          }
+
+      - name: Assemble OnionOS SD payload
+        env:
+          SDL2_ROOT: vendor/sdl2
+        run: ./scripts/assemble_sd.sh dist
+
+      - name: Upload OnionOS package
+        uses: actions/upload-artifact@v4
+        with:
+          name: WIPI-Miyoo-Onion
+          path: |
+            WIPI-Miyoo-Onion.zip
+            build/elf-header.txt
+            build/elf-dynamic.txt
+          if-no-files-found: error
+          retention-days: 14
