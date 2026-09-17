@@ -10,18 +10,14 @@ CROSS_STRIP="${CROSS_STRIP:-$(command -v arm-linux-gnueabihf-strip || true)}"
 TARGET="armv7-unknown-linux-gnueabihf"
 LIB="$WIPI_REPO/rust/target/$TARGET/release/libwipi_ios.a"
 SDL_INC="$SDL2_ROOT/sdl2/include"
-SDL_LIB="$SDL2_ROOT/sdl2/build/.libs"
+SDL_LIB="build/miyoo-sdl"
 
 [ -f "$LIB" ] || { echo "Missing $LIB; run build_core.sh first" >&2; exit 1; }
 [ -f "$SDL_INC/SDL.h" ] || { echo "Missing SDL headers at $SDL_INC" >&2; exit 1; }
-[ -f "$SDL_LIB/libSDL2-2.0.so.0" ] || { echo "Missing Miyoo SDL2 runtime" >&2; exit 1; }
+[ -f "$SDL_LIB/libSDL2-2.0.so.0" ] || { echo "Missing staged Miyoo SDL2 runtime; run build_sdl2.sh first" >&2; exit 1; }
 [ -n "$CROSS_CC" ] && [ -x "$CROSS_CC" ] || { echo "Missing arm-linux-gnueabihf-gcc" >&2; exit 1; }
 
 mkdir -p build/include
-# The frontend intentionally uses the conventional <SDL2/SDL.h> include form,
-# while steward-fu/sdl2 keeps headers directly in sdl2/include.  Expose that
-# directory under an SDL2 alias so both the real build and host smoke-test use
-# the same source include.
 rm -f build/include/SDL2
 ln -s "$(realpath "$SDL_INC")" build/include/SDL2
 
@@ -30,7 +26,7 @@ ln -s "$(realpath "$SDL_INC")" build/include/SDL2
   -ffunction-sections -fdata-sections \
   -Iinclude -Ibuild/include \
   src/wipi_miyoo.c "$LIB" \
-  -L"$SDL_LIB" -Wl,-rpath-link,"$SDL_LIB" -lSDL2 \
+  -L"$SDL_LIB" -Wl,-rpath-link,"$SDL_LIB" -Wl,--allow-shlib-undefined -lSDL2 \
   -Wl,--gc-sections \
   -lpthread -ldl -lm -lrt \
   -o build/wipi-miyoo
