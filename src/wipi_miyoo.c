@@ -1,6 +1,8 @@
 #define _POSIX_C_SOURCE 200809L
 #include <SDL2/SDL.h>
 #include <errno.h>
+#include <fcntl.h>
+#include <linux/input.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -17,6 +19,10 @@
 #define FRAME_BYTES (WIPI_W * WIPI_H * 4)
 #define PERF_LOG_SECONDS 5.0
 
+#ifndef SDLK_ESCAPE
+#define SDLK_ESCAPE 27
+#endif
+
 typedef enum {
     P_UP, P_DOWN, P_LEFT, P_RIGHT,
     P_A, P_B, P_X, P_Y,
@@ -28,6 +34,18 @@ typedef enum {
 static const char *active_wipi_key[P_COUNT];
 static int keypad_mode = 0;
 static int running = 1;
+static int hard_exit_requested = 0;
+static int menu_down = 0;
+static int select_down = 0;
+
+static void request_host_exit(const char *reason) {
+    if (!hard_exit_requested) {
+        fprintf(stderr, "[exit] %s\n", reason ? reason : "host exit requested");
+        fflush(stderr);
+    }
+    hard_exit_requested = 1;
+    running = 0;
+}
 
 static double monotonic_seconds(void) {
     struct timespec ts;
@@ -87,10 +105,10 @@ static int physical_from_sdl(SDL_Keycode key) {
         case SDLK_DOWN: return P_DOWN;
         case SDLK_LEFT: return P_LEFT;
         case SDLK_RIGHT: return P_RIGHT;
-        case SDLK_SPACE: return P_A;       /* Miyoo A */
-        case SDLK_LCTRL: return P_B;       /* Miyoo B */
-        case SDLK_LSHIFT: return P_X;      /* Miyoo X */
-        case SDLK_LALT: return P_Y;        /* Miyoo Y */
+        case SDLK_SPACE: return P_A;
+        case SDLK_LCTRL: return P_B;
+        case SDLK_LSHIFT: return P_X;
+        case SDLK_LALT: return P_Y;
         case SDLK_e: return P_L1;
         case SDLK_t: return P_R1;
         case SDLK_TAB: return P_L2;
@@ -138,9 +156,36 @@ static void release_all_keys(void) {
     for (int i = 0; i < P_COUNT; ++i) key_up_physical((PhysicalKey)i);
 }
 
+static void check_exit_combo(void) {
+    if (menu_down && select_down) {
+        request_host_exit("MENU+SELECT");
+    }
+}
+
+static void poll_raw_miyoo_input(int fd) {
+    if (fd < 0) return;
+    struct input_event ev;
+    for (;;) {
+        ssize_t n = read(fd, &ev, sizeof(ev));
+        if (n == (ssize_t)sizeof(ev)) {
+            if (ev.type != EV_KEY) continue;
+            if (ev.code == KEY_ESC) {
+                menu_down = ev.value != 0;
+                check_exit_combo();
+            } else if (ev.code == KEY_RIGHTCTRL) {
+                select_down = ev.value != 0;
+                check_exit_combo();
+            }
+            continue;
+        }
+        if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) return;
+        return;
+    }
+}
+
 static void handle_event(const SDL_Event *ev) {
     if (ev->type == SDL_QUIT) {
-        running = 0;
+        request_host_exit("SDL quit");
         return;
     }
     if (ev->type != SDL_KEYDOWN && ev->type != SDL_KEYUP) return;
@@ -149,15 +194,18 @@ static void handle_event(const SDL_Event *ev) {
     const SDL_Keycode sym = ev->key.keysym.sym;
     if (down && ev->key.repeat) return;
 
-    /* Miyoo SELECT is Right Ctrl: hold it for numeric keypad mode. */
+    /* OnionOS hardware map: SELECT=Right Ctrl, MENU=Escape.
+       HOME is kept as a compatibility fallback for older SDL mappings. */
     if (sym == SDLK_RCTRL) {
+        select_down = down ? 1 : 0;
         keypad_mode = down ? 1 : 0;
+        check_exit_combo();
         return;
     }
 
-    /* Miyoo MENU is Home: exit cleanly. */
-    if (sym == SDLK_HOME && down) {
-        running = 0;
+    if (sym == SDLK_ESCAPE || sym == SDLK_HOME) {
+        menu_down = down ? 1 : 0;
+        check_exit_combo();
         return;
     }
 
@@ -190,6 +238,7 @@ int main(int argc, char **argv) {
     SDL_Window *window = NULL;
     SDL_Renderer *renderer = NULL;
     SDL_Texture *texture = NULL;
+    int input_fd = -1;
     int core_started = 0;
     int rc = 1;
 
@@ -211,13 +260,20 @@ int main(int argc, char **argv) {
     }
     core_started = 1;
 
-    /* MVP starts silent. The bundled core patch removes rodio/rustysynth. */
     wipi_set_volume(0.0f, 0.0f);
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS) != 0) {
         fprintf(stderr, "SDL_Init failed: %s\n", SDL_GetError());
         goto cleanup;
     }
+
+    /* Read the hardware event device independently as an exit-combo fallback.
+       Onion keymon and SDL may also read this device; evdev readers each receive
+       their own event stream, so this does not steal normal game input. */
+    input_fd = open("/dev/input/event0", O_RDONLY | O_NONBLOCK);
+    fprintf(stderr, "[input] raw event0 %s; MENU=ESC SELECT=RIGHTCTRL\n",
+            input_fd >= 0 ? "enabled" : "unavailable");
+    fflush(stderr);
 
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "0");
     window = SDL_CreateWindow("WIPI", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED,
@@ -227,8 +283,6 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
 
-    /* Speed test: do not request PRESENTVSYNC. We want renderer presentation
-       to return immediately so it cannot throttle a slow emulation core. */
     renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) renderer = SDL_CreateRenderer(window, -1, 0);
     if (!renderer) {
@@ -248,7 +302,6 @@ int main(int argc, char **argv) {
     frame = (uint8_t *)malloc(FRAME_BYTES);
     if (!frame) goto cleanup;
 
-    /* 240x320 -> 360x480, centered on Miyoo's 640x480 panel. */
     const SDL_Rect dst = {140, 0, 360, 480};
     double perf_last = monotonic_seconds();
     unsigned perf_frames = 0;
@@ -256,10 +309,12 @@ int main(int argc, char **argv) {
 
     while (running) {
         SDL_Event ev;
+        poll_raw_miyoo_input(input_fd);
         while (SDL_PollEvent(&ev)) handle_event(&ev);
+        if (hard_exit_requested) break;
 
         if (wipi_poll_exit() > 0) {
-            running = 0;
+            request_host_exit("WIPI game requested exit");
             break;
         }
 
@@ -287,9 +342,20 @@ int main(int argc, char **argv) {
         }
 
         if (print_core_error_if_any()) {
-            running = 0;
+            request_host_exit("WIPI runtime error");
+            break;
         }
         SDL_Delay(1);
+    }
+
+    if (hard_exit_requested) {
+        /* Do not call wipi_stop() here. Its join waits for the interpreter's
+           current tick to return, which can take a very long time on Miyoo.
+           Process exit safely tears down all emulator threads; launch.sh then
+           resumes Onion MainUI via its EXIT trap. */
+        fprintf(stderr, "[exit] terminating process without blocking core join\n");
+        fflush(NULL);
+        _exit(0);
     }
 
     rc = 0;
@@ -297,6 +363,7 @@ int main(int argc, char **argv) {
 cleanup:
     release_all_keys();
     if (core_started) wipi_stop();
+    if (input_fd >= 0) close(input_fd);
     free(frame);
     if (texture) SDL_DestroyTexture(texture);
     if (renderer) SDL_DestroyRenderer(renderer);
