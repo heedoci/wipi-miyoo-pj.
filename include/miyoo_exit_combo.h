@@ -1,6 +1,10 @@
 #ifndef WIPI_MIYOO_EXIT_COMBO_H
 #define WIPI_MIYOO_EXIT_COMBO_H
 
+#ifndef _POSIX_C_SOURCE
+#define _POSIX_C_SOURCE 200809L
+#endif
+
 #include <SDL2/SDL.h>
 
 /*
@@ -11,7 +15,7 @@
  *   SELECT -> SDLK_RCTRL
  *
  * The original frontend treated MENU alone as an immediate exit, while
- * SELECT was used as the temporary numeric-keypad modifier.  Intercept SDL
+ * SELECT was used as the temporary numeric-keypad modifier. Intercept SDL
  * events here so MENU is harmless by itself and MENU+SELECT emits SDL_QUIT.
  * SELECT still reaches the frontend normally when the combo is not active,
  * so the existing keypad modifier keeps working.
