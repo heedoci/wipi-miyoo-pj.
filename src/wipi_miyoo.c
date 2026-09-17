@@ -1,3 +1,4 @@
+#define _POSIX_C_SOURCE 200809L
 #include <SDL2/SDL.h>
 #include <errno.h>
 #include <stdint.h>
