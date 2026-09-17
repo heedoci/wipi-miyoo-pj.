@@ -25,10 +25,20 @@ if [ -z "$JSONC_LIB" ] || [ ! -f "$JSONC_LIB" ]; then
 fi
 
 rm -rf "$OUT"
-mkdir -p "$OUT/Emu/WIPI/lib" "$OUT/Roms/WIPI/Imgs" "$OUT/Saves/CurrentProfile/saves/WIPI"
+mkdir -p \
+  "$OUT/App/WIPI" \
+  "$OUT/Emu/WIPI/lib" \
+  "$OUT/Roms/WIPI/Imgs" \
+  "$OUT/Saves/CurrentProfile/saves/WIPI"
+
+cp -a onion/App/WIPI/. "$OUT/App/WIPI/"
 cp -a onion/Emu/WIPI/. "$OUT/Emu/WIPI/"
 cp build/wipi-miyoo "$OUT/Emu/WIPI/wipi-miyoo"
-chmod 755 "$OUT/Emu/WIPI/launch.sh" "$OUT/Emu/WIPI/wipi-miyoo"
+chmod 755 \
+  "$OUT/App/WIPI/launch.sh" \
+  "$OUT/Emu/WIPI/launch.sh" \
+  "$OUT/Emu/WIPI/wipi-miyoo"
+
 cp "$SDL2_LIB" "$OUT/Emu/WIPI/lib/libSDL2-2.0.so.0"
 ln -sf libSDL2-2.0.so.0 "$OUT/Emu/WIPI/lib/libSDL2.so"
 cp "$EGL_LIB" "$OUT/Emu/WIPI/lib/libEGL.so"
@@ -37,12 +47,12 @@ cp "$JSONC_LIB" "$OUT/Emu/WIPI/lib/libjson-c.so.5"
 
 cat > "$OUT/Roms/WIPI/README.txt" <<'TXT'
 Put WIPI/J2ME .zip or .jar files in this folder.
-Then refresh the OnionOS game list and open WIPI.
+If WIPI does not appear in Games, use Apps > WIPI Launcher.
 TXT
 
 (
   cd "$OUT"
-  zip -9 -r ../WIPI-Miyoo-Onion.zip Emu Roms Saves >/dev/null
+  zip -9 -r ../WIPI-Miyoo-Onion.zip App Emu Roms Saves >/dev/null
 )
 
 echo "SD payload: $OUT/"
