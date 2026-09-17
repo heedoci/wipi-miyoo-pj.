@@ -13,6 +13,7 @@
 #define WIPI_W 240
 #define WIPI_H 320
 #define FRAME_BYTES (WIPI_W * WIPI_H * 4)
+#define PERF_LOG_SECONDS 5.0
 
 typedef enum {
     P_UP, P_DOWN, P_LEFT, P_RIGHT,
@@ -189,6 +190,10 @@ int main(int argc, char **argv) {
         return 3;
     }
 
+    fprintf(stderr, "[perf] speed-test build; rom=%s bytes=%lu\n",
+            base_name(rom_path), (unsigned long)rom_len);
+    fflush(stderr);
+
     mkdir_p(data_dir);
     wipi_init();
     if (!wipi_start(rom_data, rom_len, base_name(rom_path), data_dir, "")) {
@@ -214,11 +219,22 @@ int main(int argc, char **argv) {
         goto cleanup;
     }
 
-    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+    /* Speed test: do not request PRESENTVSYNC. We want renderer presentation
+       to return immediately so it cannot throttle a slow emulation core. */
+    renderer = SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
     if (!renderer) renderer = SDL_CreateRenderer(window, -1, 0);
     if (!renderer) {
         fprintf(stderr, "SDL_CreateRenderer failed: %s\n", SDL_GetError());
         goto cleanup;
+    }
+
+    {
+        SDL_RendererInfo info;
+        if (SDL_GetRendererInfo(renderer, &info) == 0) {
+            fprintf(stderr, "[perf] renderer=%s flags=0x%x vsync=request-disabled\n",
+                    info.name ? info.name : "unknown", (unsigned)info.flags);
+            fflush(stderr);
+        }
     }
 
     texture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32,
@@ -233,6 +249,10 @@ int main(int argc, char **argv) {
 
     /* 240x320 -> 360x480, centered on Miyoo's 640x480 panel. */
     const SDL_Rect dst = {140, 0, 360, 480};
+    const uint64_t perf_freq = SDL_GetPerformanceFrequency();
+    uint64_t perf_last = SDL_GetPerformanceCounter();
+    unsigned perf_frames = 0;
+    unsigned long long perf_total = 0;
 
     while (running) {
         SDL_Event ev;
@@ -244,11 +264,26 @@ int main(int argc, char **argv) {
         }
 
         if (wipi_get_frame(frame, FRAME_BYTES)) {
+            ++perf_frames;
+            ++perf_total;
             SDL_UpdateTexture(texture, NULL, frame, WIPI_W * 4);
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderClear(renderer);
             SDL_RenderCopy(renderer, texture, NULL, &dst);
             SDL_RenderPresent(renderer);
+        }
+
+        if (perf_freq != 0) {
+            const uint64_t now = SDL_GetPerformanceCounter();
+            const double elapsed = (double)(now - perf_last) / (double)perf_freq;
+            if (elapsed >= PERF_LOG_SECONDS) {
+                const double fps = (double)perf_frames / elapsed;
+                fprintf(stderr, "[perf] WIPI output %.2f fps (%u frames / %.2fs), total=%llu\n",
+                        fps, perf_frames, elapsed, perf_total);
+                fflush(stderr);
+                perf_frames = 0;
+                perf_last = now;
+            }
         }
 
         if (print_core_error_if_any()) {
