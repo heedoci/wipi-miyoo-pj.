@@ -5,7 +5,9 @@ ROOT="${1:-vendor/WIPI-Emulator}"
 TARGET="armv7-unknown-linux-gnueabihf"
 export PATH="/opt/prebuilt/arm-linux-gnueabihf/bin:/opt/prebuilt/bin:/opt/mini/bin:$PATH"
 CROSS_CC="${CROSS_CC:-$(command -v arm-linux-gnueabihf-gcc || true)}"
+CROSS_CXX="${CROSS_CXX:-$(command -v arm-linux-gnueabihf-g++ || true)}"
 CROSS_AR="${CROSS_AR:-$(command -v arm-linux-gnueabihf-ar || true)}"
+CROSS_RANLIB="${CROSS_RANLIB:-$(command -v arm-linux-gnueabihf-ranlib || true)}"
 
 command -v cargo >/dev/null 2>&1 || { echo "cargo not found" >&2; exit 1; }
 command -v rustup >/dev/null 2>&1 || { echo "rustup not found" >&2; exit 1; }
@@ -15,21 +17,26 @@ command -v rustup >/dev/null 2>&1 || { echo "rustup not found" >&2; exit 1; }
 rustup target add "$TARGET"
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_LINKER="$CROSS_CC"
 export CC_armv7_unknown_linux_gnueabihf="$CROSS_CC"
+export CXX_armv7_unknown_linux_gnueabihf="$CROSS_CXX"
 export AR_armv7_unknown_linux_gnueabihf="$CROSS_AR"
+export RANLIB_armv7_unknown_linux_gnueabihf="$CROSS_RANLIB"
 export CFLAGS_armv7_unknown_linux_gnueabihf="-O3 -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
+export CXXFLAGS_armv7_unknown_linux_gnueabihf="$CFLAGS_armv7_unknown_linux_gnueabihf"
 
-# Speed-test build: the generic armv7 Rust target does not otherwise tune code
-# generation for the Miyoo Mini Plus Cortex-A7. Keep hard-float ABI from the
-# target/toolchain, and explicitly enable Cortex-A7 + NEON/VFPv4 codegen.
+# cmake-rs/cc use these conventional target-qualified variables while building
+# Unicorn's QEMU/TCG C core.
+export CC="$CROSS_CC"
+[ -z "$CROSS_CXX" ] || export CXX="$CROSS_CXX"
+export AR="$CROSS_AR"
+[ -z "$CROSS_RANLIB" ] || export RANLIB="$CROSS_RANLIB"
+
+# Tune both WIE and Unicorn-facing Rust glue for Cortex-A7.
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="-C target-cpu=cortex-a7 -C target-feature=+neon,+vfp4 -C codegen-units=1"
-echo "Rust speed flags: $CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS"
+echo "Rust JIT build flags: $CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS"
+echo "Cross C compiler: $CROSS_CC"
 
 # Resolve/download the dependency graph first so we can apply a narrow
-# compatibility patch to zip 8.6.x before compiling. A number of legacy Korean
-# WIPI archives contain a stale Info-ZIP Unicode Path (0x7075) CRC. Desktop
-# unzip/Python accept these archives, but zip-rs 8.6 rejects them while opening
-# the archive. For this emulator we tolerate only that metadata CRC mismatch;
-# normal entry/data CRC checking remains unchanged.
+# compatibility patch to zip 8.6.x before compiling.
 cargo fetch --manifest-path "$ROOT/rust/Cargo.toml"
 
 python3 - <<'PY'
@@ -41,7 +48,7 @@ if not paths:
     raise SystemExit("zip 8.6.x source not found in Cargo registry; compatibility patch not applied")
 
 old = '''        if self.crc32 != computed_crc32 {\n            return Err(invalid!(\n                "CRC32 checksum failed on Unicode extra field, it is '{:#08X}' and it should be '{:#08X}'",\n                self.crc32,\n                computed_crc32\n            ));\n        }\n        Ok(self.content)'''
-new = '''        if self.crc32 != computed_crc32 {\n            // Legacy WIPI packages can contain a stale 0x7075 filename CRC.\n            // Keep using the Unicode field instead of rejecting the whole ZIP.\n            let _ = (self.crc32, computed_crc32);\n        }\n        Ok(self.content)'''
+new = '''        if self.crc32 != computed_crc32 {\n            // Legacy WIPI packages can contain a stale 0x7075 filename CRC.\n            let _ = (self.crc32, computed_crc32);\n        }\n        Ok(self.content)'''
 
 patched = 0
 for path in paths:
@@ -60,9 +67,6 @@ if patched == 0:
     raise SystemExit("No zip-rs source was patched")
 PY
 
-# patch_core.py removes desktop audio dependencies from wipi_core/Cargo.toml,
-# so Cargo.lock must be allowed to refresh in CI. Using --locked here would
-# intentionally fail as soon as that manifest changes.
 cargo build \
   --manifest-path "$ROOT/rust/Cargo.toml" \
   -p wipi_ios \
@@ -71,4 +75,15 @@ cargo build \
 
 LIB="$ROOT/rust/target/$TARGET/release/libwipi_ios.a"
 [ -f "$LIB" ] || { echo "Core build completed but $LIB is missing" >&2; exit 2; }
+
+# Unicorn is linked statically into the Rust archive/executable. Keep a simple
+# symbol sanity check in CI so an accidental interpreter-only build is obvious.
+if command -v arm-linux-gnueabihf-nm >/dev/null 2>&1; then
+  if arm-linux-gnueabihf-nm "$LIB" 2>/dev/null | grep -q 'uc_emu_start'; then
+    echo "JIT sanity: Unicorn symbols are present in libwipi_ios.a"
+  else
+    echo "warning: uc_emu_start symbol not visible in static archive; final link will be the authority" >&2
+  fi
+fi
+
 echo "Core staticlib: $LIB"
