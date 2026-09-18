@@ -23,13 +23,8 @@ export RANLIB_armv7_unknown_linux_gnueabihf="$CROSS_RANLIB"
 export CFLAGS_armv7_unknown_linux_gnueabihf="-O3 -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
 export CXXFLAGS_armv7_unknown_linux_gnueabihf="$CFLAGS_armv7_unknown_linux_gnueabihf"
 
-# cmake-rs/cc use these conventional target-qualified variables while building
-# Unicorn's QEMU/TCG C core.
-export CC="$CROSS_CC"
-[ -z "$CROSS_CXX" ] || export CXX="$CROSS_CXX"
-export AR="$CROSS_AR"
-[ -z "$CROSS_RANLIB" ] || export RANLIB="$CROSS_RANLIB"
-
+# Keep compiler overrides target-qualified. Setting global CC/CXX here would
+# also affect host-side Cargo build dependencies (bindgen/proc-macros).
 # Tune both WIE and Unicorn-facing Rust glue for Cortex-A7.
 export CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS="-C target-cpu=cortex-a7 -C target-feature=+neon,+vfp4 -C codegen-units=1"
 echo "Rust JIT build flags: $CARGO_TARGET_ARMV7_UNKNOWN_LINUX_GNUEABIHF_RUSTFLAGS"
