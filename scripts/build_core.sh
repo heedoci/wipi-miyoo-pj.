@@ -23,6 +23,18 @@ export RANLIB_armv7_unknown_linux_gnueabihf="$CROSS_RANLIB"
 export CFLAGS_armv7_unknown_linux_gnueabihf="-O3 -marm -mcpu=cortex-a7 -mfpu=neon-vfpv4 -mfloat-abi=hard"
 export CXXFLAGS_armv7_unknown_linux_gnueabihf="$CFLAGS_armv7_unknown_linux_gnueabihf"
 
+# unicorn-engine-sys generates C bindings with libclang. When Cargo is
+# cross-compiling, bindgen must use the Miyoo sysroot too; otherwise clang
+# mixes ARM target parsing with the GitHub runner's /usr/include headers.
+SYSROOT="$("$CROSS_CC" -print-sysroot)"
+if [ -z "$SYSROOT" ] || [ ! -d "$SYSROOT/usr/include" ]; then
+  SYSROOT="/opt/mini/arm-buildroot-linux-gnueabihf/sysroot"
+fi
+[ -d "$SYSROOT/usr/include" ] || { echo "Miyoo sysroot headers not found: $SYSROOT" >&2; exit 1; }
+export BINDGEN_EXTRA_CLANG_ARGS="--target=arm-linux-gnueabihf --sysroot=$SYSROOT -I$SYSROOT/usr/include"
+export BINDGEN_EXTRA_CLANG_ARGS_armv7_unknown_linux_gnueabihf="$BINDGEN_EXTRA_CLANG_ARGS"
+echo "Bindgen target sysroot: $SYSROOT"
+
 # Keep compiler overrides target-qualified. Setting global CC/CXX here would
 # also affect host-side Cargo build dependencies (bindgen/proc-macros).
 # Tune both WIE and Unicorn-facing Rust glue for Cortex-A7.
