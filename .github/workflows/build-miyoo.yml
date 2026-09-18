@@ -30,10 +30,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     env:
       WIPI_REF: ${{ inputs.wipi_ref || 'main' }}
       SDL2_REF: ${{ inputs.sdl2_ref || 'master' }}
+      WIE_JIT_REF: 0e4be6605f9b4bd0d53c10a83da3b0651166d899
 
     steps:
       - name: Checkout wipi-miyoo frontend
@@ -46,6 +47,13 @@ jobs:
           ref: ${{ env.WIPI_REF }}
           path: vendor/WIPI-Emulator
 
+      - name: Checkout pinned WIE for JIT patch
+        uses: actions/checkout@v4
+        with:
+          repository: ParkJeongseop/wie
+          ref: ${{ env.WIE_JIT_REF }}
+          path: vendor/wie-jit
+
       - name: Checkout Miyoo SDL2
         uses: actions/checkout@v4
         with:
@@ -57,9 +65,10 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            ca-certificates curl file git make python3 zip
+            ca-certificates clang cmake curl file git libclang-dev make ninja-build pkg-config python3 zip
           rustup show
-          docker --version
+          cmake --version
+          ninja --version
 
       - name: Host frontend smoke test
         run: bash ./test/smoke_test.sh
@@ -67,13 +76,15 @@ jobs:
       - name: Install Miyoo Mini toolchain
         run: bash ./scripts/prepare_toolchain.sh
 
-      - name: Patch WIPI core for silent MVP
-        run: python3 ./scripts/patch_core.py vendor/WIPI-Emulator
+      - name: Patch WIPI core and enable Unicorn JIT
+        run: |
+          python3 ./scripts/patch_core.py vendor/WIPI-Emulator
+          python3 ./scripts/patch_wie_jit.py vendor/WIPI-Emulator vendor/wie-jit
 
-      - name: Build Miyoo SDL2 and SwiftShader
+      - name: Build Miyoo SDL2 runtime
         run: bash ./scripts/build_sdl2.sh vendor/sdl2
 
-      - name: Build WIPI Rust core for ARMv7
+      - name: Build WIPI Rust core for ARMv7 with JIT
         run: bash ./scripts/build_core.sh vendor/WIPI-Emulator
 
       - name: Build Miyoo SDL2 frontend
@@ -97,10 +108,10 @@ jobs:
           SDL2_ROOT: vendor/sdl2
         run: bash ./scripts/assemble_sd.sh dist
 
-      - name: Upload OnionOS package
+      - name: Upload OnionOS JIT package
         uses: actions/upload-artifact@v4
         with:
-          name: WIPI-Miyoo-Onion
+          name: WIPI-Miyoo-JIT
           path: |
             WIPI-Miyoo-Onion.zip
             build/elf-header.txt
