@@ -29,7 +29,8 @@ mkdir -p \
   "$OUT/App/WIPI" \
   "$OUT/Emu/WIPI/lib" \
   "$OUT/Roms/WIPI/Imgs" \
-  "$OUT/Saves/CurrentProfile/saves/WIPI"
+  "$OUT/Saves/CurrentProfile/saves/WIPI" \
+  "$OUT/licenses"
 
 cp -a onion/App/WIPI/. "$OUT/App/WIPI/"
 cp -a onion/Emu/WIPI/. "$OUT/Emu/WIPI/"
@@ -45,6 +46,13 @@ cp "$EGL_LIB" "$OUT/Emu/WIPI/lib/libEGL.so"
 cp "$GLES2_LIB" "$OUT/Emu/WIPI/lib/libGLESv2.so"
 cp "$JSONC_LIB" "$OUT/Emu/WIPI/lib/libjson-c.so.5"
 
+cp LICENSE "$OUT/LICENSE"
+cp THIRD_PARTY_NOTICES.md "$OUT/THIRD_PARTY_NOTICES.md"
+cp licenses/WIPI-Emulator-MIT.txt "$OUT/licenses/WIPI-Emulator-MIT.txt"
+cp licenses/WIE-MIT.txt "$OUT/licenses/WIE-MIT.txt"
+[ -f "$SDL2_ROOT/LICENSE" ] || { echo "Missing SDL2 license file: $SDL2_ROOT/LICENSE" >&2; exit 1; }
+cp "$SDL2_ROOT/LICENSE" "$OUT/licenses/SDL2-LGPL-2.1.txt"
+
 cat > "$OUT/Roms/WIPI/README.txt" <<'TXT'
 Put WIPI/J2ME .zip or .jar files in this folder.
 If WIPI does not appear in Games, use Apps > WIPI Launcher.
@@ -52,7 +60,7 @@ TXT
 
 (
   cd "$OUT"
-  zip -9 -r ../WIPI-Miyoo-Onion.zip App Emu Roms Saves >/dev/null
+  zip -9 -r ../WIPI-Miyoo-Onion.zip App Emu Roms Saves LICENSE THIRD_PARTY_NOTICES.md licenses >/dev/null
 )
 
 echo "SD payload: $OUT/"

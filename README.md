@@ -93,7 +93,14 @@ cross-toolchain; `scripts/build_all.sh` performs the full sequence once those ch
 
 ## Upstream / licensing
 
-- WIPI-Emulator: MIT licensed; this project consumes and temporarily patches its Rust core.
-- steward-fu/sdl2: Miyoo-specific SDL2 runtime; preserve its upstream license notices when redistributing.
+This repository's own code is licensed under the MIT License. See [LICENSE](LICENSE).
 
-This repository does not redistribute WIPI game ROMs/packages.
+Third-party components used by the build have their own licenses:
+
+- WIPI-Emulator — MIT
+- WIE — MIT
+- steward-fu/sdl2 — LGPL-2.1
+
+See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and the `licenses/` directory for details. The packaged OnionOS artifact also includes the applicable license notices.
+
+This repository does not redistribute WIPI game ROMs/packages. Use only game files you are legally entitled to use.
